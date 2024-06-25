@@ -1,0 +1,59 @@
+import sys
+import time
+import socket
+import threading
+import numpy as np
+def send_state(host,port,state):
+	try:
+		with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+			s.connect((host,port))
+			s.sendall(f'{state}\n'.encode('utf-8'))
+	except Exception as e:
+		print(f"Error sending state to {host}:{port}-{e}")
+def listen_for_states(node_id,port,num_neighbours):
+	received_states=[]
+	def handle_client_connection(client_socket):
+		state=float(client_socket.recv(1024).decode('utf-8').strip())
+		received_states.append(state)
+		client_socket.close()
+	with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as server:
+		server.bind((node_id,port))
+		server.listen(num_neighbours)
+		while len(received_states)<num_neighbours:
+			client_sock,_=server.accept()
+			client_handler=threading.Thread(target=handle_client_connection,args=(client_sock,))
+			client_handler.start()
+			client_handler.join()
+	return received_states
+def update_state(current_state,received_states,inputs,dt):
+	#state_derivative=-laplacian@current_state+inputs
+	state_derivative=-len(received_states)@current_state+sum(received_states)+inputs
+	new_state=current_state+state_derivative*dt
+	return new_state
+def consensus_algorithm(node_index,node_id,portI,initial_state,inputs,dt,steps,neighbours):
+	state=initial_state
+	#states_over_time=[state.copy()]
+	for t in range(steps):
+		for neighbour,port in neighbours:
+			send_state(neighbour,port,state)
+		received_states=listen_for_states(node_id,portI,len(neighbours))
+		state=update_state(state,received_states,inputs,dt)
+		states_over_time.append(state.copy())
+		print(f"Node{node_index}:New state at step{t}={state}")
+		#time.sleep(0.1)
+	#return states_over_time
+	
+
+if __name__=="__main__":
+	node_index=1
+	node_id='10.194.2.33'
+	dt=0.001
+	steps=1000
+	portI=5001
+	initial_states=0.2
+	neighbours=[('10.194.2.32',5000)]
+	inputs=0
+	consensus_algorithm(node_index,node_id,portI,initial_states,inputs,dt,steps,neighbours)
+	
+	
+	
